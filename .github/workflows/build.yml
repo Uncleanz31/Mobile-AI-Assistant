@@ -20,25 +20,36 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android NDK (Stable r26d)
+      - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r26d
+          link-to-sdk: true
 
-      - name: Grant Execute Permission for Gradlew
-        run: chmod +x gradlew
+      - name: Fix Missing llama.cpp and Gradlew
+        run: |
+          # 1. Clone llama.cpp if missing or broken
+          rm -rf app/src/main/cpp/llama.cpp
+          git clone --depth 1 https://github.com/ggerganov/llama.cpp.git app/src/main/cpp/llama.cpp
+
+          # 2. Generate gradlew wrapper if missing
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper
+          fi
+          chmod +x gradlew
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK to Artifacts
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mobile-AI-Assistant
+          name: Mobile-AI-Assistant-APK
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Create GitHub Release with APK
-        uses: softprops/action-gh-release@v1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: success()
         with:
           tag_name: v1.0.0
           name: Mobile AI Assistant APK

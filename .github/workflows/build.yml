@@ -6,6 +6,10 @@ on:
 permissions:
   contents: write
 
+# Silences the Node.js 20/24 deprecation warnings
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,19 +24,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r26d
-          link-to-sdk: true
-
-      - name: Setup Matching llama.cpp Version and Gradle
+      - name: Fix Submodules and Clone Exact llama.cpp
         run: |
-          # 1. Detect the exact commit of llama.cpp tracked by this repo
+          # 1. Fix .gitmodules so Git stops throwing errors during cleanup
+          git config -f .gitmodules submodule.app/src/main/cpp/llama.cpp.url https://github.com/ggerganov/llama.cpp.git
+          git config -f .gitmodules submodule.app/src/main/cpp/llama.cpp.path app/src/main/cpp/llama.cpp
+          
+          # 2. Find the exact llama.cpp commit the author used
           COMMIT_HASH=$(git ls-tree HEAD app/src/main/cpp/llama.cpp | awk '{print $3}')
           echo "Target llama.cpp commit: $COMMIT_HASH"
-
-          # 2. Clone llama.cpp and check out the matching commit
+          
+          # 3. Clone and checkout that exact version to prevent C++ build errors
           rm -rf app/src/main/cpp/llama.cpp
           git clone https://github.com/ggerganov/llama.cpp.git app/src/main/cpp/llama.cpp
           if [ -n "$COMMIT_HASH" ]; then
@@ -41,20 +43,18 @@ jobs:
             cd ../../../..
           fi
 
-          # 3. Fix broken .gitmodules to avoid Git cleanup errors
-          printf '[submodule "app/src/main/cpp/llama.cpp"]\n\tpath = app/src/main/cpp/llama.cpp\n\turl = https://github.com/ggerganov/llama.cpp.git\n' > .gitmodules
-
-          # 4. Setup Gradle 8.4 wrapper
-          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
-          unzip -q gradle-8.4-bin.zip
-          ./gradle-8.4/bin/gradle wrapper --gradle-version 8.4
-          chmod +x gradlew
+      - name: Setup Gradle 8.4
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        # Uses the system gradle provided by the action above
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Mobile-AI-Assistant-APK
           path: app/build/outputs/apk/debug/*.apk

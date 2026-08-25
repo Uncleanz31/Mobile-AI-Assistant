@@ -26,16 +26,16 @@ jobs:
           ndk-version: r26d
           link-to-sdk: true
 
-      - name: Fix Missing llama.cpp and Gradlew
+      - name: Setup Gradle 8.4 & llama.cpp Submodule
         run: |
-          # 1. Clone llama.cpp if missing or broken
-          rm -rf app/src/main/cpp/llama.cpp
-          git clone --depth 1 https://github.com/ggerganov/llama.cpp.git app/src/main/cpp/llama.cpp
+          # 1. Fix missing git submodule URL and fetch exact commit
+          git config submodule."app/src/main/cpp/llama.cpp".url https://github.com/ggerganov/llama.cpp.git
+          git submodule update --init --recursive || (rm -rf app/src/main/cpp/llama.cpp && git clone --depth 50 https://github.com/ggerganov/llama.cpp.git app/src/main/cpp/llama.cpp)
 
-          # 2. Generate gradlew wrapper if missing
-          if [ ! -f "gradlew" ]; then
-            gradle wrapper
-          fi
+          # 2. Download and install Gradle 8.4
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
+          unzip -q gradle-8.4-bin.zip
+          ./gradle-8.4/bin/gradle wrapper --gradle-version 8.4
           chmod +x gradlew
 
       - name: Build Debug APK
@@ -43,6 +43,7 @@ jobs:
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Mobile-AI-Assistant-APK
           path: app/build/outputs/apk/debug/*.apk

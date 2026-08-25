@@ -26,13 +26,25 @@ jobs:
           ndk-version: r26d
           link-to-sdk: true
 
-      - name: Setup Gradle 8.4 & llama.cpp Submodule
+      - name: Setup Matching llama.cpp Version and Gradle
         run: |
-          # 1. Fix missing git submodule URL and fetch exact commit
-          git config submodule."app/src/main/cpp/llama.cpp".url https://github.com/ggerganov/llama.cpp.git
-          git submodule update --init --recursive || (rm -rf app/src/main/cpp/llama.cpp && git clone --depth 50 https://github.com/ggerganov/llama.cpp.git app/src/main/cpp/llama.cpp)
+          # 1. Detect the exact commit of llama.cpp tracked by this repo
+          COMMIT_HASH=$(git ls-tree HEAD app/src/main/cpp/llama.cpp | awk '{print $3}')
+          echo "Target llama.cpp commit: $COMMIT_HASH"
 
-          # 2. Download and install Gradle 8.4
+          # 2. Clone llama.cpp and check out the matching commit
+          rm -rf app/src/main/cpp/llama.cpp
+          git clone https://github.com/ggerganov/llama.cpp.git app/src/main/cpp/llama.cpp
+          if [ -n "$COMMIT_HASH" ]; then
+            cd app/src/main/cpp/llama.cpp
+            git checkout $COMMIT_HASH
+            cd ../../../..
+          fi
+
+          # 3. Fix broken .gitmodules to avoid Git cleanup errors
+          printf '[submodule "app/src/main/cpp/llama.cpp"]\n\tpath = app/src/main/cpp/llama.cpp\n\turl = https://github.com/ggerganov/llama.cpp.git\n' > .gitmodules
+
+          # 4. Setup Gradle 8.4 wrapper
           wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
           unzip -q gradle-8.4-bin.zip
           ./gradle-8.4/bin/gradle wrapper --gradle-version 8.4
@@ -43,7 +55,6 @@ jobs:
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: Mobile-AI-Assistant-APK
           path: app/build/outputs/apk/debug/*.apk
